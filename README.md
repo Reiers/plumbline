@@ -13,6 +13,12 @@ This repository is the umbrella: documentation, brand, and roster.
 Code for individual services lives in named sibling repos under
 `Reiers/plumbline-*`.
 
+**Public commitments:**
+
+- [SLO.md](./SLO.md) — what we promise, how we measure it, what happens when we miss.
+- [RUNBOOK.md](./RUNBOOK.md) — how the operator keeps the surface healthy.
+- Live status: <https://status.reiers.io>
+
 ---
 
 ## Sub-projects
@@ -20,12 +26,12 @@ Code for individual services lives in named sibling repos under
 | Repo | What it does |
 | --- | --- |
 | [`plumbline-faucet`](https://github.com/Reiers/plumbline-faucet) | Public Calibration faucet. tFIL + USDFC drips, served at <https://faucet.reiers.io>. |
-| _(soon)_ `plumbline-monitor` | SP uptime + chain health probes that feed the public status page. |
+| [`plumbline-monitor`](https://github.com/Reiers/plumbline-monitor) | Public SLO-compliance status page for the whole Plumbline surface, served at <https://status.reiers.io>. |
+| [`calix`](https://github.com/Reiers/calix) | Calibration network stability console + nv-upgrade validation, served at <https://calix.reiers.io>. |
 | _(soon)_ `plumbline-cli` | Operator scripts: dispenser top-up, key rotation, Trove management. |
 
-The build order is faucet → monitor → cli. Each sibling repo carries
-its own README, license, and CI; the umbrella stays documentation-only
-and changes only when the brand or governance changes.
+Each sibling repo carries its own README, license, and CI; the umbrella
+holds documentation, brand, roster, SLO and runbook.
 
 ---
 
