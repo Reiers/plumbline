@@ -37,15 +37,17 @@ holds documentation, brand, roster, SLO and runbook.
 
 ## Storage providers
 
-Plumbline operates two long-running Storage Providers on Calibration,
-deliberately maintained as stable test targets so that builders,
+Plumbline operates a long-running Storage Provider on Calibration,
+deliberately maintained as a stable test target so that builders,
 auditors, and protocol teams have repeatable conditions to test
 against across nv-upgrade boundaries.
 
 | SP | Filfox |
 | --- | --- |
 | `t0143103` | <https://calibration.filfox.info/en/address/t0143103> |
-| `t0144416` | <https://calibration.filfox.info/en/address/t0144416> |
+
+_Roster history: a second SP (`t0144416`) was retired 2026-07-15. The
+test-target availability SLO is measured against the current roster._
 
 The ops cadence:
 

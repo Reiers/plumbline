@@ -20,7 +20,7 @@ Three services, each with named SLOs:
 | --- | --- | --- |
 | **Plumbline Faucet** | <https://faucet.reiers.io> | Public tFIL + USDFC drip for Calibration builders and SPs. |
 | **Calix** | <https://calix.reiers.io> | Real-time Calibration network stability console + nv-upgrade validation surface. |
-| **SP test targets** | `t0143103`, `t0144416` | Two long-running Storage Providers deliberately kept stable across nv boundaries. |
+| **SP test target** | `t0143103` | Long-running Storage Provider deliberately kept stable across nv boundaries. |
 
 Services out of scope: private/internal tooling, one-off scripts, brand
 assets, anything not listed above.
@@ -67,14 +67,14 @@ that upgrade.
 
 ### 2.5 SP test-target availability
 
-Fraction of one-hour windows in which both `t0143103` and `t0144416`
-appear as **active** miners in the Calibration state tree, as observed
-via Lotus RPC (`StateMinerActiveSectors` returns non-empty within the
+Fraction of one-hour windows in which `t0143103` appears as an
+**active** miner in the Calibration state tree, as observed via
+Lotus RPC (`StateMinerActiveSectors` returns non-empty within the
 window).
 
-- Individual SP failures are permitted as long as the roster maintains at
-  least one active miner. This SLO measures the roster's ability to
-  serve as a stable test target, not any single SP.
+_Roster history: a second SP (`t0144416`) previously participated as a
+redundant backup; it was retired 2026-07-15. If a second test target is
+re-added, this SLI is re-defined against the roster as a whole._
 
 ---
 
