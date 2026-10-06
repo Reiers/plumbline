@@ -1,6 +1,6 @@
 # Plumbline — Operations Runbook v1
 
-**Version:** v1.0 · **Last reviewed:** 2026-08-03 · **Operator:** TSE Reiersen
+**Version:** v1.1 · **Last reviewed:** 2026-10-06 · **Operator:** TSE Reiersen
 
 Practical playbook for keeping Plumbline services healthy. Structured as
 **symptom → check → fix → verify**. Aim: any competent operator can bring
@@ -29,11 +29,10 @@ window (see [SLO.md §2.2](./SLO.md#22-faucet--availability)).
 
 | Component | Host | Path | systemd unit |
 | --- | --- | --- | --- |
-| Plumbline Faucet | Hetzner Helsinki (157.180.16.39) | `/opt/plumbline-faucet` | `plumbline-faucet.service` |
+| Plumbline Faucet | Hetzner Helsinki (`<plumbline-host>`) | `/opt/plumbline-faucet` | `plumbline-faucet.service` |
 | Calix (calibration) | same box | `/opt/calix` | `calix.service` |
 | Plumbline Monitor (status page) | same box, static via nginx | `/opt/plumbline-monitor/web` | (static, no service) |
 | SP `t0143103` | private cluster, dedicated node | — | see cluster docs |
-| SP `t0144416` | private cluster, dedicated node | — | see cluster docs |
 
 Nginx serves all three web-facing hosts behind Cloudflare (orange-cloud).
 Origin cert is the wildcard `*.reiers.io` Cloudflare Origin CA cert at
@@ -52,7 +51,7 @@ curl -sS https://calix.reiers.io/api/v1/health | jq .
 curl -sS https://status.reiers.io/api/summary.json | jq .
 
 # On the box:
-ssh root@157.180.16.39
+ssh root@<plumbline-host>
 systemctl status plumbline-faucet calix nginx
 journalctl -u plumbline-faucet -n 100 --no-pager
 journalctl -u calix -n 100 --no-pager
@@ -101,27 +100,53 @@ canonical "faucet is fine" signal. `/api/v1/health` returning
 
 ### 3.3 Symptom: rate-limit denials for legitimate builders
 
-The DB is `better-sqlite3` at `/opt/plumbline-faucet/rate-limits.sqlite`.
-Never edit while the service is running.
+Current limits are documented in
+[reports/2026-10-onramp-hardening-review.md](./reports/2026-10-onramp-hardening-review.md).
+A denied request returns HTTP 429 with `error` set to one of
+`ip_rate_limited`, `address_rate_limited`, `public_ip_rate_limited` or
+`api_key_rate_limited`, plus `retryAfterSec`. Check which one first.
 
-To grant a bypass for a partner:
+State lives in `better-sqlite3` at `/opt/plumbline-faucet/rate-limits.sqlite`
+(tables `ip_drips`, `address_drips`, `api_keys`, `api_key_drips`,
+`recent_drips`). Never edit while the service is running.
 
-1. Issue an API key. Add to `.env`:
-   ```
-   API_KEYS_JSON=[{"name":"synapS3-ci","key":"<32-byte hex>","enabled":true,"limitFil":200,"limitUsdfc":200}]
-   ```
-2. `systemctl restart plumbline-faucet`.
-3. Share the key over Signal or Slack DM — never email.
-
-Per-address caps still apply. To lift a per-address cap, edit the DB
-offline:
+**Builder needs more than the captcha limits (CI, SDK test suites):** issue
+an API key. Keys bypass Turnstile and replace the per-IP window with a
+per-key quota.
 
 ```bash
 systemctl stop plumbline-faucet
 sqlite3 /opt/plumbline-faucet/rate-limits.sqlite \
-  "DELETE FROM address_limits WHERE address='0x...' AND asset='fil';"
+  "INSERT INTO api_keys (key,name,enabled,created_unix,max_drips_per_window,window_sec,notes)
+   VALUES ('<32-byte hex>','<partner>-ci',1,strftime('%s','now'),200,86400,'requested by ...');"
 systemctl start plumbline-faucet
 ```
+
+Share the key over Signal or Slack DM, never email. Revoke with
+`UPDATE api_keys SET enabled=0 WHERE name='<partner>-ci';`.
+
+**Lift a per-address window early** (one-off, e.g. a builder hit the cap
+during a demo):
+
+```bash
+systemctl stop plumbline-faucet
+sqlite3 /opt/plumbline-faucet/rate-limits.sqlite \
+  "DELETE FROM address_drips WHERE address='0x...' AND asset='fil';"
+systemctl start plumbline-faucet
+```
+
+**Suspected abuse** (one IP or address range draining the dispenser):
+
+```bash
+sqlite3 /opt/plumbline-faucet/rate-limits.sqlite \
+  "SELECT address, asset, count(*) FROM recent_drips GROUP BY 1,2 ORDER BY 3 DESC LIMIT 20;"
+journalctl -u plumbline-faucet --since '24 hours ago' -o cat | grep '"statusCode":429' | wc -l
+```
+
+If a single source is responsible, block it at Cloudflare (WAF custom
+rule) rather than changing faucet-wide limits. The reserve floor
+(`MIN_RESERVE_*`) guarantees the faucet stops with HTTP 503 `faucet_dry`
+before the dispenser is emptied.
 
 ### 3.4 Symptom: dispenser wallet low reserve
 
@@ -155,7 +180,7 @@ report the updated amount.
 ### 3.5 Deploy a faucet update
 
 ```bash
-ssh root@157.180.16.39
+ssh root@<plumbline-host>
 cd /opt/plumbline-faucet
 sudo -u faucet -H git pull
 sudo -u faucet -H pnpm install --prod=false
@@ -198,7 +223,7 @@ Read `journalctl -u calix -n 200`. Common causes:
   the audit output; often this needs a restart after Lotus itself catches
   up.
 
-### 4.3 Symptom: nv-upgrade validation window
+### 4.3 nv-upgrade validation window (last executed: nv29 Solstice, 2026-09-28)
 
 When a new nv is scheduled, one working day before the activation epoch:
 
@@ -208,14 +233,17 @@ When a new nv is scheduled, one working day before the activation epoch:
    expected manifest for the new actors bundle.
 3. Watch the activation epoch on the status page. Migration audit runs
    `migrationConfirmEpochs` (~5.5 minutes) after activation.
-4. Publish the audit result within 24h — see [SLO.md §2.4](./SLO.md#24-calix--nv-upgrade-validation-latency).
+4. Cross-check every actor code CID against an independent
+   `lotus state actor-cids` output. The refresh script refuses to write
+   `audit.json` if any CID diverges.
+5. Publish the audit result within 24h — see [SLO.md §2.4](./SLO.md#24-calix--nv-upgrade-validation-latency).
 
 ### 4.4 Deploy a calix update
 
 Calix is a Go binary built from `github.com/Reiers/calix/api`.
 
 ```bash
-ssh root@157.180.16.39
+ssh root@<plumbline-host>
 cd /opt/calix/src   # git checkout of Reiers/calix
 git pull
 cd api
@@ -246,7 +274,26 @@ Do not try to fix at 3am. Announce degraded on the status page, gather
 the state, and address in a scheduled window. Faulted sectors are
 recoverable if caught within a proving deadline.
 
-### 5.3 Roster changes
+### 5.3 Symptom: miner stops producing blocks, Curio nodes look healthy
+
+Observed 2026-10-01 ([post-mortem](./reports/incidents/2026-10-01-t0143103-block-production.md)).
+Both Curio nodes were running but had lost their machine registration in
+the cluster database, so the task scheduler could not claim WinningPoSt or
+WindowPoSt work.
+
+- **Check:** Calix shows t0143103 status not `ok` and `lastBlockAgeSec`
+  climbing. In the Curio UI the machine list is empty or missing nodes, and
+  WinningPoSt tasks queue without an owner.
+- **Fix:** restart Curio on each node, one at a time. Each restart
+  re-registers the machine. Expect a burst of stale election tasks that
+  drains within about 15 minutes.
+- **Verify:** blocks land again (Calix `blocksLast60` > 0), and after the
+  next proving window `Filecoin.StateMinerSectorCount` shows `Faulty: 0`.
+- If WindowPoSt was missed, faulted sectors recover automatically at the
+  next proving window for that deadline. Confirm and note it on the status
+  page.
+
+### 5.4 Roster changes
 
 Adding, removing, or replacing an SP is a public change. Update
 `README.md` in this repo, note the change on the next monthly report,
@@ -256,6 +303,21 @@ full PoST cycle.
 ---
 
 ## 6. Status page — symptoms and fixes
+
+### 6.0 Symptom: all three services fail at the same time
+
+Observed 2026-08-24 ([post-mortem](./reports/incidents/2026-08-24-host-network-loss.md)).
+The collector probes the public endpoints from the same host, so a host
+network loss looks like faucet, Calix and SP all failing together.
+
+- **Check:** from outside, `curl -sS https://faucet.reiers.io/healthz`.
+  On the box, `journalctl --since '-30 min' | grep -c 'deadline exceeded\|i/o timeout'`.
+  Many outbound timeouts plus no inbound faucet requests means network, not
+  services.
+- **Fix:** do not restart services. Check the hosting provider status page
+  and Cloudflare status. Open a provider ticket if it lasts more than 15
+  minutes.
+- **Verify:** probes succeed again, then post the incident on the status page.
 
 `plumbline-monitor` is a static site at `/opt/plumbline-monitor/web`
 served by nginx at `status.reiers.io`. It polls the endpoints listed in
@@ -271,7 +333,7 @@ served by nginx at `status.reiers.io`. It polls the endpoints listed in
 ### 6.2 Deploy a monitor update
 
 ```bash
-ssh root@157.180.16.39
+ssh root@<plumbline-host>
 cd /opt/plumbline-monitor
 git pull
 # nothing else — nginx serves ./web/ directly
@@ -339,6 +401,12 @@ consumption.
 
 ## 10. Change log for the runbook
 
+- **v1.1 (2026-10-06):** Removed retired SP t0144416 from the
+  infrastructure map. Rewrote §3.3 for the API-key table, added abuse
+  triage. Added §5.3 (Curio machine registration lost, from the
+  2026-10-01 incident) and §6.0 (host network loss, from the 2026-08-24
+  incident). nv-upgrade checklist updated after the nv29 run. Host
+  address replaced with a placeholder.
 - **v1.0 (2026-08-03):** Initial version. Covers Faucet, Calix, SP test
   targets, status page, DNS/Cloudflare, backups. Companion to SLO.md v1.0.
 
