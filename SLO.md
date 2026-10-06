@@ -1,12 +1,14 @@
 # Plumbline — Public Service-Level Objectives
 
-**Version:** v1.0 · **Effective:** 2026-08-03 · **Operator:** TSE Reiersen (Org. 929 074 912)
+**Version:** v1.1 · **Effective:** 2026-08-03 · **Revised:** 2026-10-06 · **Operator:** TSE Reiersen (Org. 929 074 912)
 
 Plumbline is stability infrastructure for the Filecoin Calibration testnet. This
 document is a public commitment: what we promise, how we measure it, and what
 happens when we miss.
 
-Live compliance is published at <https://status.reiers.io>. This document
+Live compliance is published at <https://status.reiers.io>. Monthly
+realised numbers, incident post-mortems and reviews are published in
+[reports/](./reports/). This document
 tracks named targets; the status page tracks realised numbers over the
 rolling 30-day window.
 
@@ -35,42 +37,54 @@ raw numbers; this section defines them.
 ### 2.1 Faucet — drip latency
 
 Time from a successful POST to `/api/drip/{fil,usdfc}` (captcha or API key
-accepted) to the drip transaction being included in a Calibration tipset,
-as observed by the faucet server.
+accepted) to the drip transaction being included in a Calibration tipset.
 
-- Instrument: internal timing histogram, exposed at `/metrics` as
-  `plumbline_faucet_drip_seconds_bucket{asset="fil|usdfc"}`.
-- Successful drips only. Requests rejected by captcha, rate limit,
-  malformed input, or downstream RPC 5xx are excluded.
+- Instrument: end-to-end server time of each successful drip request,
+  taken from the faucet request log. The faucet responds only after it has
+  seen the transaction receipt, so this is an upper bound on time to
+  inclusion. Reported per month in [reports/](./reports/).
+- Successful drips on the captcha and API-key paths only. Public
+  (`/api/public/drip/*`, `claim_token_all`) drips, and requests rejected by
+  captcha, rate limit, malformed input, or downstream RPC 5xx, are excluded.
 
 ### 2.2 Faucet — availability
 
-Fraction of one-minute windows in which `GET /healthz` returned HTTP 200
-with `{"ok": true}` **and** the reported dispenser balances were above the
-configured `minReserveFil` / `minReserveUsdfc`.
+Fraction of 5-minute probes in which `GET /healthz` returned HTTP 200 with
+`{"ok": true}`.
 
-- Probe: external HTTP monitor, 1-minute interval.
+- Probe: the Plumbline uptime collector
+  ([source](https://github.com/Reiers/plumbline-monitor/tree/main/collector)),
+  5-minute interval. Each failed probe counts as 5 minutes of downtime.
+- Dispenser balances are tracked separately. Below the configured reserve
+  (`MIN_RESERVE_FIL` / `MIN_RESERVE_USDFC`) the faucet refuses drips with
+  HTTP 503 `faucet_dry`, and `plumbline_faucet_low_reserve` on `/metrics`
+  flips to 1. Any such period is reported in the monthly report.
 - Excluded: planned maintenance windows announced ≥24h in advance on the
   status page and in `#fil-net-calibration-discuss`.
 
 ### 2.3 Calix — availability
 
-Fraction of one-minute windows in which `GET /api/v1/health` returned
-HTTP 200 with a `chainHeadAgeSeconds < 300` (chain head fresh within 5
-minutes).
+Fraction of 5-minute probes in which `GET /api/v1/health` returned HTTP
+200 with `ok: true`. Same collector as §2.2. Chain-head freshness is shown
+separately on the status page (head age signal).
 
 ### 2.4 Calix — nv-upgrade validation latency
 
-Time from a Calibration `nv{N}` activation epoch to Calix publishing a
-migration-audit result (`/api/v1/status.migration.confirmed = true`) for
-that upgrade.
+Time from a Calibration `nv{N}` activation epoch to Calix publishing its
+post-upgrade migration audit for that upgrade at
+<https://calix.reiers.io/data/audit.json> (`networkVersion = N`,
+`actors.match = true`). The audit cross-checks every actor code CID against
+an independent `lotus state actor-cids` output and is not published if any
+CID diverges. Timestamp: the publishing commit in
+[Reiers/calix](https://github.com/Reiers/calix).
 
 ### 2.5 SP test-target availability
 
-Fraction of one-hour windows in which `t0143103` appears as an
-**active** miner in the Calibration state tree, as observed via
-Lotus RPC (`StateMinerActiveSectors` returns non-empty within the
-window).
+Fraction of 5-minute probes in which
+`GET https://calix.reiers.io/api/v1/miners/status?addrs=t0143103` reports
+the miner as `ok` (active in the Calibration state tree and producing
+blocks). Same collector as §2.2. If Calix itself is unreachable, the
+window counts as SP downtime too.
 
 _Roster history: a second SP (`t0144416`) previously participated as a
 redundant backup; it was retired 2026-07-15. If a second test target is
@@ -100,9 +114,12 @@ process below.
 ## 4. Public reporting
 
 - **Live status page:** <https://status.reiers.io>. Publishes current SLO
-  compliance for each SLI, refreshed at least every 60 seconds.
+  compliance for each SLI. Live signals refresh every 30 seconds; the
+  90-day uptime history refreshes every 5 minutes. Incidents are posted on
+  the page as they happen, each linking its post-mortem.
 - **Monthly report:** a short markdown post at
-  <https://github.com/Reiers/plumbline/tree/main/reports/> summarising
+  <https://github.com/Reiers/plumbline/tree/main/reports/> (index:
+  [reports/README.md](./reports/README.md)) summarising
   the month's realised numbers, any SLO breaches, root-cause notes, and
   planned changes. Published within the first 5 working days of the
   following month.
@@ -173,11 +190,15 @@ Endpoints used by the status page and by third-party monitors:
 | Calix up | `GET https://calix.reiers.io/api/v1/health` |
 | Calix status | `GET https://calix.reiers.io/api/v1/status` |
 | Calix metrics | `GET https://calix.reiers.io/metrics` |
-| SP roster | `GET https://calix.reiers.io/api/v1/miners/status` (roster subset) |
+| SP roster | `GET https://calix.reiers.io/api/v1/miners/status?addrs=t0143103` |
+| nv-upgrade audit | `GET https://calix.reiers.io/data/audit.json` |
+| Uptime history (90 days) | `GET https://status.reiers.io/uptime.json` |
 
 All endpoints return JSON except `/metrics`, which returns Prometheus
 text-format.
 
 ---
 
-_Change history is `git log SLO.md` — no separate changelog._
+_Change history is `git log SLO.md`. v1.1 (2026-10-06) aligned the SLI
+measurement descriptions (§2) with the instrumentation actually running and
+linked the published reports. No target in §3 changed._
