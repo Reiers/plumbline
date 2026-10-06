@@ -30,8 +30,8 @@ From the faucet request log, 2026-08-01 to 2026-10-06:
 
 | Signal | Count |
 | --- | --- |
-| Drip attempts (`POST`) | 33, from 15 distinct IPs |
-| Successful drips | 29 (25 captcha/API-key, 4 public) |
+| Drips sent (on-chain transactions) | 35: 12 tFIL (52,000 tFIL) and 23 USDFC (38,400 USDFC) |
+| Drip requests (`POST`) | 33, from 15 distinct IPs (a \`claim_token_all\` request sends both assets) |
 | Rate-limited (429) | 3 (2 captcha path, 1 public path) |
 | Rejected as malformed or failed captcha (400) | 1 |
 | Errors caused by the upstream public RPC | 2 (outside our control, SLO.md §6) |
