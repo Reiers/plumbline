@@ -17,6 +17,7 @@ Code for individual services lives in named sibling repos under
 
 - [SLO.md](./SLO.md) — what we promise, how we measure it, what happens when we miss.
 - [RUNBOOK.md](./RUNBOOK.md) — how the operator keeps the surface healthy.
+- [reports/](./reports/): monthly operations reports, incident post-mortems and reviews.
 - Live status: <https://status.reiers.io>
 
 ---
