@@ -13,6 +13,7 @@ Public operations record for Plumbline, as committed in [SLO.md §4](../SLO.md#4
 
 | Date | Document |
 | --- | --- |
+| 2026-11-02 | [Successor-operability dry run: rebuild and recovery from the public docs](./2026-11-successor-operability-dryrun.md) |
 | 2026-10-06 | [On-ramp hardening review: faucet + builder API](./2026-10-onramp-hardening-review.md) |
 
 ## Incident post-mortems
