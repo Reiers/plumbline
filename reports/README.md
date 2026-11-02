@@ -6,6 +6,7 @@ Public operations record for Plumbline, as committed in [SLO.md §4](../SLO.md#4
 
 | Month | Report | Headline |
 | --- | --- | --- |
+| October 2026 | [2026-10.md](./2026-10.md) | Faucet and Calix above target. Planned storage maintenance on the SP test target (Oct 12 to 16); all sectors recovered. |
 | September 2026 | [2026-09.md](./2026-09.md) | nv29 Solstice validated 37 min after activation. All availability SLOs met. |
 | August 2026 | [2026-08.md](./2026-08.md) | First month under SLO v1.0. All availability SLOs met despite a 5h host network loss. |
 
@@ -13,6 +14,7 @@ Public operations record for Plumbline, as committed in [SLO.md §4](../SLO.md#4
 
 | Date | Document |
 | --- | --- |
+| 2026-11-02 | [Successor-operability dry run: rebuild and recovery from the public docs](./2026-11-successor-operability-dryrun.md) |
 | 2026-10-06 | [On-ramp hardening review: faucet + builder API](./2026-10-onramp-hardening-review.md) |
 
 ## Incident post-mortems
@@ -21,6 +23,7 @@ Required for any single event consuming more than 25% of a 30-day error budget (
 
 | Date | Post-mortem | Services |
 | --- | --- | --- |
+| 2026-10-12 | [Planned storage-server maintenance, t0143103](./incidents/2026-10-12-t0143103-storage-outage.md) | SP test target |
 | 2026-10-01 | [t0143103 stopped producing blocks](./incidents/2026-10-01-t0143103-block-production.md) | SP test target |
 | 2026-08-24 | [Host network loss](./incidents/2026-08-24-host-network-loss.md) | Faucet, Calix (SP unobservable) |
 
