@@ -1,6 +1,6 @@
 # Plumbline: Operations Runbook
 
-**Version:** v1.2 · **Last reviewed:** 2026-11-02 · **Operator:** TSE Reiersen
+**Version:** v1.3 · **Last reviewed:** 2026-11-02 · **Operator:** TSE Reiersen
 
 Practical playbook for keeping Plumbline services healthy. Structured as
 **symptom → check → fix → verify**. Aim: any competent operator can bring
@@ -58,6 +58,7 @@ Filfox) and announce on the status page, but cannot fix it.
 | Calix (calibration) | same box | `/opt/calix/calix-api` + `/opt/calix/web` (deployed by `deploy/deploy.sh`, not a checkout) | `calix.service` | `127.0.0.1:8765` |
 | Plumbline Monitor (status page) | same box | `/opt/plumbline-monitor` (git checkout), nginx serves `web/` | none (static) | |
 | Uptime collector | same box | `/opt/plumbline-monitor/collector`, data in `/var/lib/plumbline-monitor` | `plumbline-uptime.timer` (every 5 min) | |
+| Mainnet preview faucet (not yet activated) | same box | `/opt/plumbline-faucet-mainnet` (second checkout, `NETWORK=mainnet`, user `faucet-mainnet`) | `plumbline-faucet-mainnet.service` | `127.0.0.1:8006`, served at `faucet.reiers.io/mainnet/` |
 | SP `t0143103` | private cluster, dedicated node | n/a | see cluster docs | |
 
 Nginx serves all three web-facing hosts behind Cloudflare (orange cloud).
@@ -376,6 +377,13 @@ Do not try to fix at 3am. Announce degraded on the status page, gather
 the state, and address in a scheduled window. Faulted sectors are
 recoverable if caught within a proving deadline.
 
+**Planned SP maintenance** (storage server, proving node, network): post
+it on the status page and in `#fil-net-calibration-discuss` at least 24
+hours before it starts, with the expected window. Only announced windows
+are excluded from availability under [SLO.md §2.2](./SLO.md#22-faucet--availability).
+Before the window, record the current storage paths (`curio cli storage list`)
+so the post-maintenance check in §5.5 has something to compare against.
+
 ### 5.3 Symptom: miner stops producing blocks, Curio nodes look healthy
 
 Observed 2026-10-01 ([post-mortem](./reports/incidents/2026-10-01-t0143103-block-production.md)).
@@ -403,6 +411,31 @@ and hold the previous SP in the roster until the new one has passed one
 full PoST cycle. The SP address is also hardcoded in
 `plumbline-monitor` (`web/app.js`, `web/index.html`, collector) and in
 the Calix dashboard; update those in the same change.
+
+### 5.5 Symptom: WindowPoSt fails after storage maintenance, sectors unreachable
+
+Observed 2026-10-12 to 2026-10-16 ([post-mortem](./reports/incidents/2026-10-12-t0143103-storage-outage.md)).
+The storage server came back with a different export path, the mount on
+the proving node pointed at nothing, and a malformed Curio storage
+configuration hid the problem.
+
+- **Check:** Calix shows t0143103 not `ok`; Curio logs WindowPoSt errors
+  about missing sector files. On the proving node, confirm the mount is
+  read-write and at the expected path (`mount | grep -i calibration`,
+  then list a known sealed sector as root). `curio cli storage list`
+  should show the sealed-sector store with its full Sealed/Cache counts.
+  Open `~/.curio/storage.json`: every path must be its own object, e.g.
+  `{"StoragePaths":[{"Path":"/a/"},{"Path":"/b/"}]}`. Two `Path` keys
+  in one object means only the last one is read.
+- **Fix:** remount at the server's current export path. Back up and
+  correct `storage.json`, restart Curio, and if the store is still
+  missing from `storage list`, attach it explicitly:
+  `curio cli --machine <node>:12300 storage attach <path>`.
+- **Verify:** `storage list` shows the store with the expected counts,
+  blocks land again (Calix `blocksLast60` > 0), and after the next
+  proving windows `Filecoin.StateMinerSectorCount` shows `Faulty: 0`.
+  Close the status-page entry and write the post-mortem if the outage
+  passed about 1h 48m.
 
 ---
 
@@ -585,6 +618,11 @@ consumption.
 
 ## 10. Change log for the runbook
 
+- **v1.3 (2026-11-02):** Added §5.5 (sectors unreachable after storage
+  maintenance, from the 2026-10-12 window) and the 24-hour announcement
+  rule for SP maintenance in §5.2. Added the mainnet preview faucet
+  (ships not yet activated) to the infrastructure map; its activation
+  runbook is `plumbline-faucet/docs/mainnet-activation-runbook.md`.
 - **v1.2 (2026-11-02):** Successor dry run. Added §0.1 (access a second
   operator needs), §3.6 (key rotation), §6.2 (uptime.json), §8.2 restore
   and §8.3 host rebuild. Fixed: status-page URL in §2 (`/uptime.json`),
